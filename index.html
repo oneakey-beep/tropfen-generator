@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tropfen-Generator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: ruhiges Werkzeug für die Nacht-Bühne, präzise, ohne Deko
+   IDEA: ein Lichttisch im dunklen Studio, auf dem die Silhouette Wasser abwirft
+   PICTURE: die Bühne selbst, Tänzerin + Tropfen live, groß
+   COLOUR and TYPE: tiefes Schwarzblau, helles Ink, ein Wasserblau als Akzent; IBM Plex Sans
+   LAYOUT: Bühne links groß, Regler rechts in einer Spalte, unter 900px gestapelt */
+:root{color-scheme:dark;--bg:#0a0c0f;--panel:#12161b;--line:#222a33;--ink:#e6edf2;--mute:#8a98a6;--acc:#6ec3ff}
+*{box-sizing:border-box;min-width:0}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 "IBM Plex Sans",system-ui,sans-serif;overflow-x:clip}
+header{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:baseline;padding:18px max(3vw,16px) 6px}
+h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em}
+header p{margin:0;color:var(--mute);font-size:14px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:18px;padding:12px max(3vw,16px) 28px}
+@media(max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
+.stage{position:relative;aspect-ratio:16/9;background:#000;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.stage video,.stage canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.stage .drop{position:absolute;left:0;right:0;bottom:14px;text-align:center;color:var(--mute);pointer-events:none;font-size:14px}
+.stage.over{outline:2px dashed var(--acc);outline-offset:-8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+button,.file{font:inherit;font-size:14px;min-height:40px;padding:0 14px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+button:hover,.file:hover{border-color:#3a4652}
+button:focus-visible,.file:focus-within,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+button.pri{background:var(--acc);color:#04121d;border-color:var(--acc);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+.file input{position:absolute;opacity:0;width:1px;height:1px}
+.info{color:var(--mute);font-size:13px;margin-left:auto;font-variant-numeric:tabular-nums}
+.prog{height:4px;background:var(--line);border-radius:4px;margin-top:10px;overflow:hidden;display:none}
+.prog i{display:block;height:100%;width:0;background:var(--acc)}
+aside{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px 6px}
+aside h2{font-size:13px;font-weight:600;color:var(--mute);margin:14px 0 6px}
+aside h2:first-child{margin-top:0}
+.presets{display:flex;flex-wrap:wrap;gap:6px}
+.presets button{min-height:34px;font-size:13px;padding:0 10px}
+.row{display:grid;grid-template-columns:1fr 78px;gap:2px 10px;align-items:center;padding:5px 0}
+.row label{font-size:14px}
+.row .num{width:100%;font:inherit;font-size:14px;min-height:30px;padding:2px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg);color:var(--ink);text-align:right;font-variant-numeric:tabular-nums}
+.row input[type=range]{grid-column:1/-1;width:100%;accent-color:var(--acc);height:22px}
+.chk{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:14px}
+.chk input{width:18px;height:18px;accent-color:var(--acc)}
+.col{display:flex;gap:10px;align-items:center;padding:6px 0;font-size:14px}
+.col input:disabled{opacity:.35}
+.col input{width:44px;height:30px;border:1px solid var(--line);border-radius:6px;background:none;padding:2px}
+.note{font-size:13px;color:var(--mute);margin:10px 0}
+.thumbs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}.thumbs button{width:48px;height:48px;padding:3px;min-height:0;background:#000 center/contain no-repeat;position:relative}.thumbs button::after{content:"×";position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:9px;background:var(--line);font-size:12px;line-height:18px;text-align:center}
+.msg{font-size:13px;color:var(--acc);min-height:20px;margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Tropfen-Generator</h1>
+  <p>Erkennt die Bewegung der Tänzerin und lässt Wassertropfen in Bewegungsrichtung abspritzen. Export als PNG-Sequenz mit Alpha für After Effects.</p>
+</header>
+<main>
+  <section>
+    <div class="stage" id="stage">
+      <video id="vid" muted playsinline loop></video>
+      <canvas id="gl"></canvas>
+      <div class="drop" id="drop">Demo-Figur läuft · eigenen Clip laden oder hierher ziehen</div>
+    </div>
+    <div class="bar">
+      <label class="file">Clip laden<input type="file" id="file" accept="video/*"></label>
+      <button id="play">Pause</button>
+      <button id="reset">Neu starten</button>
+      <button class="pri" id="export">PNG-Sequenz exportieren</button>
+      <button id="cancel" hidden>Abbrechen</button>
+      <span class="info" id="info">Demo · 25 fps</span>
+    </div>
+    <div class="prog" id="prog"><i></i></div>
+    <div class="msg" id="msg"></div>
+    <p class="note">Tipp: In After Effects die PNG-Sequenz importieren, über die Tänzerin legen, Modus „Addieren" oder „Normal" (Alpha). Die Sequenz enthält nur die Tropfen.</p>
+  </section>
+  <aside id="ctl">
+    <h2>Voreinstellungen</h2>
+    <div class="presets" id="presets"></div>
+    <h2>Quelle</h2>
+    <div class="row"><label for="fps">Bildrate (fps)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="fps" min="12" max="60" step="1"></div>
+    <div class="chk"><input type="checkbox" id="showVid"><label for="showVid">Tänzerin in der Vorschau zeigen</label></div>
+    <h2>Bewegung</h2>
+    <div class="row"><label for="thr">Schwelle (ab welcher Bewegung)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="thr" min="1" max="6" step="0.5"></div>
+    <div class="row"><label for="emit">Menge</label><input type="number" class="num" inputmode="decimal"><input type="range" id="emit" min="0" max="30" step="0.5"></div>
+    <div class="row"><label for="push">Mitnahme der Bewegung</label><input type="number" class="num" inputmode="decimal"><input type="range" id="push" min="0" max="3" step="0.05"></div>
+    <div class="row"><label for="spread">Streuung (%)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="spread" min="0" max="1" step="0.01"></div>
+    <h2>Physik</h2>
+    <div class="row"><label for="grav">Schwerkraft</label><input type="number" class="num" inputmode="decimal"><input type="range" id="grav" min="0" max="2000" step="10"></div>
+    <div class="row"><label for="drag">Luftwiderstand</label><input type="number" class="num" inputmode="decimal"><input type="range" id="drag" min="0" max="8" step="0.1"></div>
+    <div class="row"><label for="life">Lebensdauer (s)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="life" min="0.1" max="4" step="0.05"></div>
+    <h2>Aussehen</h2>
+    <div class="row"><label for="size">Größe (px)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="size" min="1" max="96" step="0.5"></div>
+    <div class="row"><label for="sizeR">Größe zufällig (%)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="sizeR" min="0" max="1" step="0.01"></div>
+    <div class="row"><label for="op">Deckkraft (%)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="op" min="0.05" max="1" step="0.01"></div>
+    <div class="row"><label for="soft">Weichheit (%)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="soft" min="0" max="1" step="0.01"></div>
+    <div class="row"><label for="streak">Schlieren (Motion Blur)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="streak" min="1" max="10" step="1"></div>
+    <div class="col"><input type="color" id="color"><label for="color">Farbe</label></div>
+    <div class="chk"><input type="checkbox" id="orig"><label for="orig">Originalfarbe aus dem Footage übernehmen</label></div>
+    <h2>Eigene Partikel-Bilder</h2>
+    <label class="file">Bilder laden (PNG mit Transparenz)<input type="file" id="sprites" accept="image/*" multiple></label>
+    <div class="thumbs" id="thumbs"></div>
+    <div class="chk"><input type="checkbox" id="tint"><label for="tint">Mit Farbe einfärben</label></div>
+    <div class="chk"><input type="checkbox" id="align"><label for="align">An Flugrichtung ausrichten</label></div>
+    <div class="row"><label for="rotR">Zufällige Drehung (%)</label><input type="number" class="num" inputmode="decimal"><input type="range" id="rotR" min="0" max="1" step="0.01"></div>
+    <div class="row"><label for="spin">Drehen im Flug</label><input type="number" class="num" inputmode="decimal"><input type="range" id="spin" min="0" max="10" step="0.1"></div>
+    <p class="note" id="sprNote">Ohne Bilder werden runde Tropfen gezeichnet. Mehrere Bilder werden zufällig gemischt (bis 8).</p>
+  </aside>
+</main>
+<script>
+{
+const $=id=>document.getElementById(id);
+const P={fps:25,showVid:true,thr:1,emit:4,push:0.8,spread:0.25,grav:450,drag:1.6,life:1,size:5,sizeR:0.6,op:0.9,soft:0.5,streak:4,color:'#e6f4ff',tint:true,align:false,rotR:1,spin:0,orig:false};
+const PRESETS={
+  'Spritzer':{thr:1,emit:4,push:0.8,spread:0.25,grav:450,drag:1.6,life:1,size:5,sizeR:0.6,op:0.9,soft:0.5,streak:4},
+  'Feiner Nebel':{thr:1,emit:12,push:0.7,spread:0.5,grav:120,drag:2.5,life:1.4,size:2,sizeR:0.7,op:0.45,soft:0.8,streak:2},
+  'Dicke Tropfen':{thr:2,emit:2,push:1.3,spread:0.15,grav:900,drag:0.6,life:1.6,size:7,sizeR:0.5,op:0.9,soft:0.35,streak:6},
+  'Schweif':{thr:1,emit:7,push:0.3,spread:0.1,grav:40,drag:3,life:2,size:3,sizeR:0.4,op:0.6,soft:0.6,streak:3}
+};
+try{Object.assign(P,JSON.parse(localStorage.getItem('tropfen')||'{}'))}catch(e){}
+const save=()=>{try{localStorage.setItem('tropfen',JSON.stringify(P))}catch(e){}};
+const KEYS=['fps','thr','emit','push','spread','grav','drag','life','size','sizeR','op','soft','streak','rotR','spin'],PCT=new Set(['spread','sizeR','op','soft','rotR']);
+const toUI=(k,v)=>PCT.has(k)?Math.round(v*100):+(+v).toFixed(2),fromUI=(k,v)=>PCT.has(k)?v/100:v;
+function syncUI(){for(const k of KEYS){$(k).value=P[k];$(k).previousElementSibling.value=toUI(k,P[k])}$('showVid').checked=P.showVid;$('tint').checked=P.tint;$('orig').checked=P.orig;$('color').disabled=P.orig;$('align').checked=P.align;$('color').value=P.color;showSrc()}
+function showSrc(){const v=P.showVid?'visible':'hidden';vid.style.visibility=v;if(typeof demo!=='undefined')demo.style.visibility=useDemo?v:'hidden'}
+for(const k of KEYS){const r=$(k),n=r.previousElementSibling;n.step=PCT.has(k)?1:r.step;n.min=PCT.has(k)?r.min*100:r.min;n.setAttribute('aria-label',r.previousElementSibling.previousElementSibling.textContent);
+  r.addEventListener('input',()=>{P[k]=+r.value;n.value=toUI(k,P[k]);save();if(k==='fps')updInfo()});
+  n.addEventListener('change',()=>{let v=parseFloat(String(n.value).replace(',','.'));if(!isFinite(v)){n.value=toUI(k,P[k]);return}v=fromUI(k,Math.max(+n.min,v));if(k==='fps'||k==='streak')v=Math.max(1,Math.round(v));P[k]=v;r.value=v;n.value=toUI(k,v);save();if(k==='fps')updInfo()});
+  n.addEventListener('keydown',e=>{if(e.key==='Enter')n.blur()})}
+$('presets').innerHTML=Object.keys(PRESETS).map(n=>`<button data-p="${n}">${n}</button>`).join('');
+$('presets').addEventListener('click',e=>{const n=e.target.dataset.p;if(!n)return;Object.assign(P,PRESETS[n]);syncUI();save()});
+
+const vid=$('vid'),cv=$('gl'),stage=$('stage');
+$('showVid').addEventListener('change',e=>{P.showVid=e.target.checked;showSrc();save()});
+$('color').addEventListener('input',e=>{P.color=e.target.value;save()});
+for(const k of['tint','align','orig'])$(k).addEventListener('change',e=>{P[k]=e.target.checked;$('color').disabled=P.orig;save()});
+
+/* ---------- Quelle: Demo oder Video ---------- */
+let W=1920,H=1080,useDemo=true,demoT=0;
+const AW=240;let AH=108;
+const an=document.createElement('canvas'),ac=an.getContext('2d',{willReadFrequently:true});
+const demo=document.createElement('canvas');demo.width=W;demo.height=H;const dc=demo.getContext('2d');stage.insertBefore(demo,cv);
+function drawDemo(t){dc.fillStyle='#000';dc.fillRect(0,0,W,H);dc.fillStyle='#fff';dc.strokeStyle='#fff';dc.lineCap='round';
+  const cx=W/2,cy=H*0.42,sw=Math.sin(t*2.2);
+  dc.beginPath();dc.arc(cx+sw*20,cy-150,42,0,7);dc.fill();
+  dc.lineWidth=70;dc.beginPath();dc.moveTo(cx+sw*20,cy-90);dc.lineTo(cx,cy+130);dc.stroke();
+  dc.lineWidth=34;const a1=-1.2+sw*1.3,a2=Math.PI+1.2-Math.sin(t*2.2+1)*1.3;
+  for(const a of[a1,a2]){const ex=cx+Math.cos(a)*150,ey=cy-70+Math.sin(a)*150;dc.beginPath();dc.moveTo(cx,cy-70);dc.lineTo(ex,ey);dc.lineTo(ex+Math.cos(a+sw*0.8)*130,ey+Math.sin(a+sw*0.8)*130);dc.stroke()}
+  dc.beginPath();dc.moveTo(cx-90,cy+130);dc.lineTo(cx+90,cy+130);dc.lineTo(cx+170+sw*30,cy+430);dc.lineTo(cx-170+sw*30,cy+430);dc.fill()}
+function setSize(w,h){W=w;H=h;cv.width=W;cv.height=H;AH=Math.max(8,Math.round(AW*H/W));an.width=AW;an.height=AH;stage.style.aspectRatio=W+'/'+H;gl.viewport(0,0,W,H);prev=null}
+
+/* ---------- Bewegung: Block-Matching auf kleinem, weichgezeichnetem Bild ---------- */
+let prev=null,cur=null,curRGB=null;const STEP=3,R=3,SR=9;
+function grab(src){ac.filter='blur(1px)';ac.drawImage(src,0,0,AW,AH);const d=ac.getImageData(0,0,AW,AH).data;curRGB=d;const g=new Float32Array(AW*AH);
+  for(let i=0;i<g.length;i++)g[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)/255;return g}
+function flowAndEmit(dt){if(!prev){prev=cur;return}
+  const sc=W/AW,thr=P.thr,M=R+SR+1;
+  for(let y=M;y<AH-M;y+=STEP)for(let x=M;x<AW-M;x+=STEP){
+    const k0=y*AW+x;
+    let mn=1,mx=0,zero=0;for(let j=-R;j<=R;j++)for(let i=-R;i<=R;i++){const k=k0+j*AW+i,q=prev[k];if(q<mn)mn=q;if(q>mx)mx=q;zero+=Math.abs(q-cur[k])}
+    if(mx-mn<0.25||zero<0.6)continue;
+    let best=zero,bu=0,bv=0;
+    for(let v=-SR;v<=SR;v++)for(let u=-SR;u<=SR;u++){let sad=0;
+      for(let j=-R;j<=R&&sad<best;j++){const r0=k0+j*AW,r1=r0+v*AW+u;for(let i=-R;i<=R;i++)sad+=Math.abs(prev[r0+i]-cur[r1+i])}
+      if(sad<best){best=sad;bu=u;bv=v}}
+    if(best>zero*0.7)continue;
+    const m=Math.hypot(bu,bv);if(m<thr)continue;
+    let n=P.emit*m*0.1;const whole=Math.floor(n);n=whole+(rnd()<n-whole?1:0);
+    const vx=bu*sc/dt*P.push,vy=bv*sc/dt*P.push,sp=Math.hypot(vx,vy)*P.spread+40*P.spread;
+    if(!n)continue;let cr=1,cg=1,cb=1;
+    if(P.orig){let bl=-1;const cx=x+bu,cy=y+bv;for(let j=-1;j<=1;j++)for(let i=-1;i<=1;i++){const q=((cy+j)*AW+cx+i)*4,l=curRGB[q]*0.299+curRGB[q+1]*0.587+curRGB[q+2]*0.114;if(l>bl){bl=l;cr=curRGB[q]/255;cg=curRGB[q+1]/255;cb=curRGB[q+2]/255}}}
+    for(let q=0;q<n;q++)spawn((x+bu*rnd()+(rnd()-0.5)*STEP)*sc,(y+bv*rnd()+(rnd()-0.5)*STEP)*sc,vx+(rnd()*2-1)*sp,vy+(rnd()*2-1)*sp,cr,cg,cb)}
+  prev=cur}
+
+/* ---------- Partikel ---------- */
+const MAX=120000;let head=0,alive=0;const rot0=new Float32Array(MAX),idx=new Float32Array(MAX),pc=new Float32Array(MAX*3);
+const px=new Float32Array(MAX),py=new Float32Array(MAX),ox=new Float32Array(MAX),oy=new Float32Array(MAX),vx_=new Float32Array(MAX),vy_=new Float32Array(MAX),age=new Float32Array(MAX),lf=new Float32Array(MAX),sz=new Float32Array(MAX);
+let seed=1;const rnd=()=>{seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
+function spawn(x,y,vx,vy,r=1,g=1,b=1){pc[head*3]=r;pc[head*3+1]=g;pc[head*3+2]=b;const i=head;head=(head+1)%MAX;px[i]=ox[i]=x;py[i]=oy[i]=y;vx_[i]=vx;vy_[i]=vy;age[i]=0;lf[i]=P.life*(0.6+rnd()*0.8);sz[i]=P.size*(1-P.sizeR*rnd());rot0[i]=(rnd()*2-1)*Math.PI*P.rotR;idx[i]=nSpr?Math.floor(rnd()*nSpr):0}
+function step(dt){const g=P.grav,dr=Math.exp(-P.drag*dt);alive=0;
+  for(let i=0;i<MAX;i++){if(lf[i]<=0)continue;age[i]+=dt;if(age[i]>=lf[i]){lf[i]=0;continue}
+    ox[i]=px[i];oy[i]=py[i];vx_[i]*=dr;vy_[i]=vy_[i]*dr+g*dt;px[i]+=vx_[i]*dt;py[i]+=vy_[i]*dt;alive++}}
+function clearSim(){lf.fill(0);head=0;alive=0;prev=null;seed=1}
+
+/* ---------- WebGL ---------- */
+const gl=cv.getContext('webgl',{premultipliedAlpha:true,preserveDrawingBuffer:true,alpha:true,antialias:false});
+const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o};
+const prog=gl.createProgram();
+gl.attachShader(prog,sh(gl.VERTEX_SHADER,`attribute vec2 p;attribute float s;attribute float a;attribute float r;attribute float n;attribute vec3 c3;uniform vec2 res;varying float va;varying float vr;varying float vn;varying vec3 vc;void main(){vc=c3;vec2 c=p/res*2.0-1.0;gl_Position=vec4(c.x,-c.y,0,1);gl_PointSize=s;va=a;vr=r;vn=n;}`));
+gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,`precision mediump float;varying float va;varying float vr;varying float vn;varying vec3 vc;uniform vec3 colU;uniform float orig;uniform float soft;uniform float useTex;uniform float cells;uniform float tint;uniform sampler2D tex;void main(){vec3 col=orig>0.5?vc:colU;if(useTex<0.5){float d=length(gl_PointCoord-0.5)*2.0;float m=1.0-smoothstep(1.0-max(soft,0.02),1.0,d);float al=va*m;gl_FragColor=vec4(col*al,al);return;}vec2 c=gl_PointCoord-0.5;float cs=cos(vr),sn=sin(vr);vec2 uv=vec2(cs*c.x-sn*c.y,sn*c.x+cs*c.y)+0.5;if(uv.x<0.0||uv.y<0.0||uv.x>1.0||uv.y>1.0)discard;vec4 t=texture2D(tex,vec2((vn+uv.x)/cells,uv.y));vec3 rgb=tint>0.5?col*dot(t.rgb,vec3(0.3333)):t.rgb;float al=va*t.a;gl_FragColor=vec4(rgb*al,al);}`));
+gl.linkProgram(prog);gl.useProgram(prog);
+const buf=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+const LP=gl.getAttribLocation(prog,'p'),LS=gl.getAttribLocation(prog,'s'),LA=gl.getAttribLocation(prog,'a'),LR=gl.getAttribLocation(prog,'r'),LN=gl.getAttribLocation(prog,'n'),LC=gl.getAttribLocation(prog,'c3');
+for(const l of[LP,LS,LA,LR,LN,LC])gl.enableVertexAttribArray(l);
+gl.vertexAttribPointer(LP,2,gl.FLOAT,false,36,0);gl.vertexAttribPointer(LS,1,gl.FLOAT,false,36,8);gl.vertexAttribPointer(LA,1,gl.FLOAT,false,36,12);gl.vertexAttribPointer(LR,1,gl.FLOAT,false,36,16);gl.vertexAttribPointer(LN,1,gl.FLOAT,false,36,20);gl.vertexAttribPointer(LC,3,gl.FLOAT,false,36,24);
+const MAXPT=gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1];
+/* Sprite-Atlas: bis 8 Bilder nebeneinander, je 256 px */
+const CELL=256;let nSpr=0,sprImgs=[];const tex=gl.createTexture();const atlas=document.createElement('canvas');
+function buildAtlas(){nSpr=sprImgs.length;$('thumbs').innerHTML=sprImgs.map((im,i)=>`<button data-i="${i}" aria-label="Bild ${i+1} entfernen" style="background-image:url(${im.src})"></button>`).join('');
+  if(!nSpr)return;atlas.width=CELL*nSpr;atlas.height=CELL;const c=atlas.getContext('2d');c.clearRect(0,0,atlas.width,CELL);
+  sprImgs.forEach((im,i)=>{const k=Math.min(CELL/im.width,CELL/im.height),w=im.width*k,h=im.height*k;c.drawImage(im,i*CELL+(CELL-w)/2,(CELL-h)/2,w,h)});
+  gl.bindTexture(gl.TEXTURE_2D,tex);gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL,false);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,atlas);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE)}
+$('sprites').addEventListener('change',async e=>{for(const f of[...e.target.files].slice(0,8-sprImgs.length)){const im=new Image();im.src=URL.createObjectURL(f);try{await im.decode();sprImgs.push(im)}catch(err){msg('Bild konnte nicht gelesen werden: '+f.name)}}e.target.value='';buildAtlas()});
+$('thumbs').addEventListener('click',e=>{const i=e.target.dataset.i;if(i===undefined)return;sprImgs.splice(+i,1);buildAtlas()});
+gl.enable(gl.BLEND);gl.blendFunc(gl.ONE,gl.ONE);
+let vbuf=new Float32Array(4096*4);
+function render(){const S=P.streak|0;const need=alive*S*9;if(vbuf.length<need)vbuf=new Float32Array(need*1.5|0);const al=P.align,sp=P.spin;
+  let o=0;const op=P.op/Math.sqrt(S);
+  for(let i=0;i<MAX;i++){if(lf[i]<=0)continue;const t=age[i]/lf[i];const a=op*Math.min(t/0.08,1)*Math.pow(1-t,1.4);
+    const r=(al?Math.atan2(vy_[i],vx_[i])+Math.PI/2+rot0[i]*0.15:rot0[i])+sp*age[i],s=Math.min(sz[i],MAXPT);
+    for(let k=0;k<S;k++){const f=S===1?1:k/(S-1);vbuf[o++]=ox[i]+(px[i]-ox[i])*f;vbuf[o++]=oy[i]+(py[i]-oy[i])*f;vbuf[o++]=s;vbuf[o++]=a;vbuf[o++]=r;vbuf[o++]=idx[i];vbuf[o++]=pc[i*3];vbuf[o++]=pc[i*3+1];vbuf[o++]=pc[i*3+2]}}
+  gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT);
+  const h=P.color;gl.uniform1f(gl.getUniformLocation(prog,'orig'),P.orig?1:0);gl.uniform3f(gl.getUniformLocation(prog,'colU'),parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255);
+  gl.uniform2f(gl.getUniformLocation(prog,'res'),W,H);gl.uniform1f(gl.getUniformLocation(prog,'soft'),P.soft);gl.uniform1f(gl.getUniformLocation(prog,'useTex'),nSpr?1:0);gl.uniform1f(gl.getUniformLocation(prog,'cells'),Math.max(nSpr,1));gl.uniform1f(gl.getUniformLocation(prog,'tint'),P.tint?1:0);gl.uniform1i(gl.getUniformLocation(prog,'tex'),0);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);
+  gl.bufferData(gl.ARRAY_BUFFER,vbuf.subarray(0,o),gl.DYNAMIC_DRAW);gl.drawArrays(gl.POINTS,0,o/9)}
+
+/* ---------- Ablauf ---------- */
+function frame(src){const dt=1/P.fps;cur=grab(src);flowAndEmit(dt);step(dt);render()}
+let playing=true,lastT=-1,exporting=false,acc=0,lastNow=0;
+function loop(now){requestAnimationFrame(loop);if(exporting)return;
+  if(useDemo){if(!playing){lastNow=now;return}acc+=Math.min(now-lastNow,100)/1000;lastNow=now;
+    while(acc>=1/P.fps){acc-=1/P.fps;demoT+=1/P.fps;drawDemo(demoT);frame(demo)}}
+  else if(!RVFC){const t=vid.currentTime;if(t===lastT)return;if(t<lastT)clearSim();lastT=t;frame(vid)}}
+const RVFC='requestVideoFrameCallback' in HTMLVideoElement.prototype;
+function onVF(now,meta){if(!exporting&&!useDemo){const t=meta.mediaTime;if(t<lastT)clearSim();if(t!==lastT){lastT=t;frame(vid)}}vid.requestVideoFrameCallback(onVF)}
+if(RVFC)vid.requestVideoFrameCallback(onVF);
+const msg=t=>$('msg').textContent=t;
+function updInfo(){$('info').textContent=(useDemo?'Demo':W+'×'+H+' · '+vid.duration.toFixed(1)+' s')+' · '+P.fps+' fps'}
+
+function load(f){if(!f||!f.type.startsWith('video'))return msg('Bitte eine Videodatei wählen.');
+  vid.src=URL.createObjectURL(f);vid.onloadedmetadata=()=>{useDemo=false;showSrc();setSize(vid.videoWidth,vid.videoHeight);clearSim();lastT=-1;$('drop').hidden=true;vid.play().catch(()=>{});playing=true;$('play').textContent='Pause';updInfo();msg('')}}
+$('file').addEventListener('change',e=>load(e.target.files[0]));
+stage.addEventListener('dragover',e=>{e.preventDefault();stage.classList.add('over')});
+stage.addEventListener('dragleave',()=>stage.classList.remove('over'));
+stage.addEventListener('drop',e=>{e.preventDefault();stage.classList.remove('over');load(e.dataTransfer.files[0])});
+$('play').addEventListener('click',()=>{playing=!playing;if(!useDemo)playing?vid.play().catch(()=>{}):vid.pause();$('play').textContent=playing?'Pause':'Abspielen'});
+$('reset').addEventListener('click',()=>{clearSim();demoT=0;if(!useDemo){vid.currentTime=0;lastT=-1}});
+
+/* ---------- ZIP (unkomprimiert) ---------- */
+const CRC=new Uint32Array(256).map((_,n)=>{let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;return c>>>0});
+const crc32=u=>{let c=~0;for(let i=0;i<u.length;i++)c=CRC[(c^u[i])&255]^(c>>>8);return~c>>>0};
+function zip(files){const parts=[],cen=[];let off=0;const enc=new TextEncoder();
+  for(const f of files){const nm=enc.encode(f.name),h=new DataView(new ArrayBuffer(30));
+    h.setUint32(0,0x04034b50,true);h.setUint16(4,20,true);h.setUint32(14,f.crc,true);h.setUint32(18,f.data.length,true);h.setUint32(22,f.data.length,true);h.setUint16(26,nm.length,true);
+    parts.push(h,nm,f.data);
+    const c=new DataView(new ArrayBuffer(46));c.setUint32(0,0x02014b50,true);c.setUint16(4,20,true);c.setUint16(6,20,true);c.setUint32(16,f.crc,true);c.setUint32(20,f.data.length,true);c.setUint32(24,f.data.length,true);c.setUint16(28,nm.length,true);c.setUint32(42,off,true);
+    cen.push(c,nm);off+=30+nm.length+f.data.length}
+  let cl=0;for(const c of cen)cl+=c.byteLength;
+  const e=new DataView(new ArrayBuffer(22));e.setUint32(0,0x06054b50,true);e.setUint16(8,files.length,true);e.setUint16(10,files.length,true);e.setUint32(12,cl,true);e.setUint32(16,off,true);
+  return new Blob([...parts,...cen,e],{type:'application/zip'})}
+
+/* ---------- Export ---------- */
+let dl=null,cancel=false;
+(async()=>{try{dl=await window.claude?.use?.('downloads')}catch(e){dl=null}})();
+const seek=t=>new Promise(r=>{let done=false;const fin=()=>{if(!done){done=true;r()}};if(RVFC)vid.requestVideoFrameCallback(fin);vid.onseeked=()=>{vid.onseeked=null;if(!RVFC)fin();else setTimeout(fin,300)};vid.currentTime=t});
+$('cancel').addEventListener('click',()=>cancel=true);
+$('export').addEventListener('click',async()=>{
+  if(useDemo)return msg('Erst einen Clip laden, die Demo-Figur wird nicht exportiert.');
+  exporting=true;cancel=false;vid.pause();clearSim();
+  const n=Math.floor(vid.duration*P.fps),files=[];$('prog').style.display='block';$('cancel').hidden=false;$('export').disabled=true;
+  for(let i=0;i<n&&!cancel;i++){await seek(Math.min(i/P.fps+0.001,vid.duration-0.001));frame(vid);
+    const b=await new Promise(r=>cv.toBlob(r,'image/png'));const u=new Uint8Array(await b.arrayBuffer());
+    files.push({name:'tropfen_'+String(i).padStart(5,'0')+'.png',data:u,crc:crc32(u)});
+    $('prog').firstElementChild.style.width=(100*(i+1)/n)+'%';msg('Rendere Frame '+(i+1)+' von '+n)}
+  $('cancel').hidden=true;$('export').disabled=false;
+  if(!cancel&&files.length){const blob=zip(files);
+    if(dl){try{await dl.save({filename:'tropfen_sequenz.zip',data:blob});msg('Gespeichert: '+files.length+' PNGs, '+(blob.size/1048576).toFixed(1)+' MB')}catch(e){msg(e&&e.code==='declined'?'Speichern abgelehnt.':'Speichern nicht möglich ('+(e&&e.code||'Fehler')+').')}}
+    else{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='tropfen_sequenz.zip';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),60000);msg('Download gestartet: '+files.length+' PNGs, '+(blob.size/1048576).toFixed(1)+' MB')}}
+  else msg('Export abgebrochen.');
+  $('prog').style.display='none';exporting=false;clearSim();lastT=-1;vid.currentTime=0;if(playing)vid.play().catch(()=>{})});
+
+syncUI();setSize(1920,1080);updInfo();requestAnimationFrame(t=>{lastNow=t;loop(t)});
+}
+</script>
+</body>
+</html>
